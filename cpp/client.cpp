@@ -26,7 +26,9 @@
 
 bool verbose = true;
 
-void runClient(int port) {
+// runClient
+// arguments: username, port number
+void runClient(const std::string &uname, int port) {
     // client socket creation
     int client_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (client_socket == -1) {
@@ -48,17 +50,19 @@ void runClient(int port) {
         std::cout << "Client: connected to server!" << std::endl;
     }
 
-    std::cout << "Type message to send to server. Type 'quit' to stop." << std::endl;
     while(true) {
+		std::cout << uname << ": ";
         std::string msg;
         std::getline(std::cin, msg);
-        send(client_socket, msg.c_str(), msg.size(), 0);  // no flags for now
+		std::string prefixed_msg(uname + ":");
+		prefixed_msg += msg;
+        send(client_socket, prefixed_msg.c_str(), prefixed_msg.size(), 0);  // no flags for now
         if (verbose) {
             std::cout << "Client:: sent message '" << msg << "'\n";
         }
 
-        // terminate if user enters 'quit'
-        if (msg == std::string("quit")) {
+        // terminate if user enters 'quit' or 'exit'
+        if ((msg == std::string("quit")) || (msg == std::string("exit"))) {
             break;
         }
 
@@ -73,11 +77,21 @@ void runClient(int port) {
 }
 
 int main(int argc, char*argv[]) {
-    std::cout << "$$ client for echoserver $$\n";
-    try {
-        runClient(7007);
-    } catch (std::exception &e) {
-        std::cerr << "ERROR: " << e.what() << std::endl;
-    }
-    return 0;
+	std::cout << "### client for echoserver ###\n";
+	std::cout << "# Enter your username when prompted." << std::endl;
+	std::cout << "# Type 'exit' to exit the chat." << std::endl;
+	std::string uname;
+	std::cout << "Enter your username: ";
+	std::getline(std::cin, uname);
+	if (uname.empty()) {
+		std::cerr << "Invalid username. Aborting." << std::endl;
+		return 1;
+	}
+
+	try {
+		runClient(uname, 7007);
+	} catch (std::exception &e) {
+		std::cerr << "ERROR: " << e.what() << std::endl;
+	}
+	return 0;
 }
