@@ -74,7 +74,7 @@ int Users::readMessage(fd_set *fds, std::string &msg) {
 		if (!FD_ISSET(u->sock, fds)) continue;
 		int client_socket = u->sock;
 		char buffer[256];
-		memset(buffer, 0, 256);
+		std::memset(buffer, 0, 256);
         int n = read(client_socket, buffer, 256);
         if (n < 0) {
             throw std::runtime_error("Server: read() failed!");

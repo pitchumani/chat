@@ -6,8 +6,10 @@
 #include <netinet/in.h>   // sockaddr_in
 #include <arpa/inet.h>
 #include <unistd.h>       // close
+
+#include <cstring>        // memset
 #include <iostream>
-#include <stdexcept>       // includes exception. runtime_error etc
+#include <stdexcept>      // includes exception. runtime_error etc
 #include <string>
 #include <thread>
 #include <vector>
