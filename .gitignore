@@ -1,0 +1,3 @@
+# build directory and object files
+cpp/build/*
+
