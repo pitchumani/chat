@@ -9,6 +9,7 @@
 
 #include <cstring>        // memset
 #include <iostream>
+#include <mutex>
 #include <stdexcept>      // includes exception. runtime_error etc
 #include <string>
 #include <thread>
