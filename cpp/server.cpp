@@ -16,18 +16,109 @@
 
 // server
 
-#include <sys/socket.h>   // socket, bind, listen, accept, connect, send, recv
-#include <netinet/in.h>   // sockaddr_in
-#include <arpa/inet.h>
-#include <unistd.h>       // close
-#include <iostream>
-// #include <exception>
-#include <stdexcept>       // includes exception. runtime_error etc
+#include "server.h"
 
 bool verbose = true;
 
+Users *Users::instance =  nullptr;
+Users *Users::Get() {
+	if (!instance) {
+        instance = new Users();
+	}
+	return instance;
+}
+
+void Users::addUser(int sock, sockaddr *addr) {
+	std::lock_guard<std::mutex> lock(users_mtx);
+	users.push_back(new User(sock, addr));
+}
+
+int Users::getMaxSocket() {
+	std::lock_guard<std::mutex> lock(users_mtx);
+	int maxsock = -1;
+	for (auto &u : users) {
+		if (u->sock > maxsock) {
+			maxsock = u->sock;
+		}
+	}
+	return maxsock;
+}
+
+int Users::addSocketsToListen(fd_set *fds) {
+	int max_sock = -1;
+	std::lock_guard<std::mutex> lock(users_mtx);
+	if (users.size() == 0) {
+		std::cout << "No users to listen!\n";
+		return -1;
+	}
+	std::cout << "Added sockets ";
+	for (auto &u : users) {
+		FD_SET(u->sock, fds);
+		if (max_sock < u->sock) max_sock = u->sock;
+		std::cout << u->sock << " ";
+	}
+	std::cout << " to listen. max is " << max_sock << std::endl;
+	return max_sock;
+}
+
+void Users::closeSockets() {
+	std::lock_guard<std::mutex> lock(users_mtx);
+	for (const auto &u : users) {
+		close(u->sock);
+	}
+}
+
+int Users::readMessage(fd_set *fds, std::string &msg) {
+	std::lock_guard<std::mutex> lock(users_mtx);
+	for (auto const &u : users) {
+		if (!FD_ISSET(u->sock, fds)) continue;
+		int client_socket = u->sock;
+		char buffer[256];
+		memset(buffer, 0, 256);
+        int n = read(client_socket, buffer, 256);
+        if (n < 0) {
+            throw std::runtime_error("Server: read() failed!");
+        }
+		msg += buffer;
+		return client_socket;
+	}
+	return -1;
+}
+
+/// listen for new connections on the server socket
+void handleNewConnections(int ssocket) {
+	while (true) {
+		fd_set read_sockets;
+		FD_ZERO(&read_sockets);
+		FD_SET(ssocket, &read_sockets);
+		int activity = select(ssocket + 1, &read_sockets, NULL, NULL, NULL);
+		if (activity < 0) {
+			// continue if any interrupt occurred on select()
+			if (errno == EINTR) continue;
+			throw std::runtime_error("Server: select() failed while waiting for "
+									 "new connections on socket " + std::to_string(ssocket));
+		}
+		// continuing without checking ssocket is set as there is no other socket
+		// assert(!FD_ISSET(ssocket, &read_sockets));
+		struct sockaddr_in *addr = new sockaddr_in();
+		socklen_t socklen;
+		int clsocket = accept(ssocket, (struct sockaddr*)&addr, &socklen);
+		if (clsocket == -1) {
+			std::cerr << "Server: accept() failed! (errno: " << errno << ")" << std::endl;
+			break;
+		} else if (verbose) {
+			std::cout << "Server: connection accepted!" << std::endl;
+		}
+		Users::Get()->addUser(clsocket, (struct sockaddr*)addr);
+		if (verbose) {
+			std::cout << "Server: added client with socket "
+					  << clsocket << std::endl;
+		}
+	}
+}
+
 void runServer(int port) {
-    int server_socket, client_socket;
+    int server_socket;
     struct sockaddr_in server_address, client_address;
     socklen_t addrlen = sizeof(client_address);
 
@@ -58,46 +149,62 @@ void runServer(int port) {
         std::cout << "Server: listening on the port " << port << std::endl;
     }
 
-    // accept a connection
-    socklen_t client_socklen;
-    client_socket = accept(server_socket, (struct sockaddr*)&client_address, &client_socklen);
-    if (client_socket == -1) {
-        std::runtime_error("Server: accept() failed!");
-    }
+	// Get users instance
+	Users *users = Users::Get();
 
-    if (verbose) {
-        std::cout << "Server: connection accepted!" << std::endl;
-    }
+    // start a thread to accept new connections
+	auto conns_thread = std::thread(handleNewConnections, server_socket);
+
+	// timeval to wait (5 secs, 500 milliseconds)
+	struct timeval timeout;
+	timeout.tv_sec = 5;
+	timeout.tv_usec = 500;
 
     while(true) {
-        char buffer[256];
-        memset(buffer, 0, 256);
-        int n = read(client_socket, buffer, 256);
-        if (n < 0) {
-            std::runtime_error("Server: read() failed!");
-        }
-        // print the received message
-        std::cout << "recv: " << buffer << std::endl;
+		// socket sets to watch
+		fd_set read_fds;
+		// clear the set after each activity
+		FD_ZERO(&read_fds);
+		// add users socket to the listening set
+		int max_fd = users->addSocketsToListen(&read_fds);
+
+		// wait for the activity from client sockets (read_fds)
+		int activity = select(max_fd + 1, &read_fds, NULL, NULL, &timeout);
+		if (activity < 0) {
+            // continue if there is any interrupt on select()
+			if (errno == EINTR) continue;
+			throw std::runtime_error("Server: select() failed!");
+		}
+		std::string msg;
+		int client_socket = users->readMessage(&read_fds, msg);
+		// FIXME: for now, continue if no valid client socket
+		if (client_socket == -1) continue;
+
+        // // print the received message
+        std::cout << "recv: " << msg << std::endl;
         // quit the connection if the message is 'quit'
-        if (strcmp(buffer, "quit") == 0) {
-            std::cout << "Quitting the server!" << std::endl;
+        if (msg == "quit") {
+            std::cout << "Quitting the client!" << std::endl;
             break;
         }
 
+		// TODO: send the message to all online users, but sender
         // send the same message received (echo)
-        std::string res_msg(buffer);
-        n = write(client_socket, res_msg.c_str(), res_msg.size());
+        int n = write(client_socket, msg.c_str(), msg.size());
         if (n < 0) {
-            std::runtime_error("Server: write() failed!");
+            throw std::runtime_error("Server: write() failed!");
         }
         if (verbose) {
             std::cout << "Server: sent the response (echo)" << std::endl;
         }
     }
 
+	// close the listening thread
+	conns_thread.join();
+
     // close the connections
     close(server_socket);
-    close(client_socket);
+    users->closeSockets();
 }
 
 int main(int argc, char*argv[]) {
