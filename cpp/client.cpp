@@ -21,6 +21,8 @@
 #include <netinet/in.h>   // sockaddr_in
 #include <arpa/inet.h>
 #include <unistd.h>       // close, STDIN_FILENO
+
+#include <cstring>        // memset
 #include <iostream>
 #include <stdexcept>      // includes exception. runtime_error etc
 #include <string>
@@ -104,7 +106,7 @@ void runClient(const std::string &uname, int port) {
         // receive message from server if any
         if (FD_ISSET(client_socket, &read_fds)) {
             char buffer[256];
-            memset(buffer, 0, sizeof(buffer));
+			std::memset(buffer, 0, sizeof(buffer));
             ssize_t bytes_received = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
             if (bytes_received > 0) {
                 std::cout << "\nrecv: " << buffer << std::endl;
