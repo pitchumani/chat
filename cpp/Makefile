@@ -5,6 +5,7 @@ CXX=clang++
 CXXFLAGS=--std=c++17 -g3
 
 CLIENT_SRCS := client.cpp
+SERVER_HDRS := server.h user.h
 SERVER_SRCS := server.cpp
 
 BUILDDIR := build
@@ -16,7 +17,7 @@ all: $(CLIENT) $(SERVER)
 $(CLIENT): $(CLIENT_SRCS) | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) $(CLIENT_SRCS) -o $@
 
-$(SERVER): $(SERVER_SRCS) | $(BUILDDIR)
+$(SERVER): $(SERVER_SRCS) $(SERVER_HDRS) | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) $(SERVER_SRCS) -o $@
 
 $(BUILDDIR):
