@@ -48,17 +48,27 @@ int Users::addSocketsToListen(fd_set *fds) {
 	int max_sock = -1;
 	std::lock_guard<std::mutex> lock(users_mtx);
 	if (users.size() == 0) {
-		std::cout << "No users to listen!\n";
+		// std::cout << "No users to listen!\n";
 		return -1;
 	}
-	std::cout << "Added sockets ";
+	// std::cout << "Added sockets ";
 	for (auto &u : users) {
 		FD_SET(u->sock, fds);
 		if (max_sock < u->sock) max_sock = u->sock;
-		std::cout << u->sock << " ";
+		// std::cout << u->sock << " ";
 	}
-	std::cout << " to listen. max is " << max_sock << std::endl;
+	// std::cout << " to listen. max is " << max_sock << std::endl;
 	return max_sock;
+}
+
+void Users::close(int client_socket) {
+	std::lock_guard<std::mutex> lock(users_mtx);
+	auto it = std::find_if(users.begin(), users.end(), [client_socket](User *u) {
+		return client_socket == u->sock;
+	});
+	if (it != users.end()) {
+		users.erase(it);
+	}
 }
 
 void Users::closeSockets() {
@@ -183,9 +193,18 @@ void runServer(int port) {
         // // print the received message
         std::cout << "recv: " << msg << std::endl;
         // quit the connection if the message is 'quit'
-        if (msg == "quit") {
+		std::size_t found_colon = msg.find_first_of(":");
+		std::string msgstr;
+		if (found_colon != std::string::npos) {
+			msgstr = msg.substr(found_colon + 1);
+		} else {
+			msgstr = msg;
+		}
+        if (msgstr == "quit") {
             std::cout << "Quitting the client!" << std::endl;
-            break;
+			users->close(client_socket);
+			// TODO: broadcast to others that user quits
+            continue;
         }
 
 		// TODO: send the message to all online users, but sender
