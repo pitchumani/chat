@@ -53,7 +53,11 @@ void runClient(const std::string &uname, int port) {
     if (verbose) {
         std::cout << "Client: connected to server!" << std::endl;
     }
-
+	std::string uname_msg("<REGISTER>:" + uname);
+	if (send(client_socket, uname_msg.c_str(), uname_msg.size(), 0) < 0) {
+		close(client_socket);
+		throw std::runtime_error("Client: send() username failed!");
+	}
     // Find the max fd between client socket and STDIN_FILENO
     int max_fd = client_socket > STDIN_FILENO ? client_socket : STDIN_FILENO;
 
@@ -67,7 +71,7 @@ void runClient(const std::string &uname, int port) {
         FD_SET(STDIN_FILENO, &read_fds);
 
         // emit the username: as prompt for user input
-        std::cout << uname << ": ";
+        std::cout << uname << "(you): ";
         // cout flush is required as it is buffered and select() will block
         std::cout.flush();
 
@@ -109,7 +113,7 @@ void runClient(const std::string &uname, int port) {
 			std::memset(buffer, 0, sizeof(buffer));
             ssize_t bytes_received = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
             if (bytes_received > 0) {
-                std::cout << "\nrecv: " << buffer << std::endl;
+                std::cout << "\n" << buffer << std::endl;
             } else if (bytes_received == 0) {
                 std::cout << "\nServer disconnected." << std::endl;
                 break;

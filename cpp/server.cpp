@@ -95,6 +95,17 @@ int Users::readMessage(fd_set *fds, std::string &msg) {
 	return -1;
 }
 
+bool Users::broadcastMessage(int sender, const std::string &msg) {
+	std::lock_guard<std::mutex> lock(users_mtx);
+	for (auto const &u : users) {
+		// skip sending message to the sender
+		if (u->sock == sender) continue;
+		int n = write(u->sock, msg.c_str(), msg.size());
+		if (n < 0) return false;
+	}
+	return true;
+}
+
 /// listen for new connections on the server socket
 void handleNewConnections(int ssocket) {
 	while (true) {
@@ -194,27 +205,39 @@ void runServer(int port) {
         std::cout << "recv: " << msg << std::endl;
         // quit the connection if the message is 'quit'
 		std::size_t found_colon = msg.find_first_of(":");
+		std::string prefix;
 		std::string msgstr;
+		std::string uname;
 		if (found_colon != std::string::npos) {
+			prefix = msg.substr(0, found_colon);
 			msgstr = msg.substr(found_colon + 1);
 		} else {
+			prefix = "<unknown>";
 			msgstr = msg;
 		}
-        if (msgstr == "quit") {
-            std::cout << "Quitting the client!" << std::endl;
+
+		// construct the broadcast message
+		std::string bmsg = msg;
+		// handle special message <REGISTER>:username
+		if (prefix == "<REGISTER>") {
+			uname = msgstr;
+			bmsg = uname + " joined the chat!";
+			msgstr.clear();
+		} else if (msgstr == "quit") {
+			uname = prefix;
+            std::cout << "Quitting the user " << uname << " as requested." << std::endl;
+			bmsg = uname + " quits the chat!";
 			users->close(client_socket);
-			// TODO: broadcast to others that user quits
-            continue;
+			// continue;
         }
 
-		// TODO: send the message to all online users, but sender
-        // send the same message received (echo)
-        int n = write(client_socket, msg.c_str(), msg.size());
-        if (n < 0) {
-            throw std::runtime_error("Server: write() failed!");
-        }
+		// broadcast the message to other users
+		if (!users->broadcastMessage(client_socket, bmsg)) {
+			throw std::runtime_error("Server: write() failed!");
+		}
+
         if (verbose) {
-            std::cout << "Server: sent the response (echo)" << std::endl;
+            std::cout << "Server: broadcasted the message to all." << std::endl;
         }
     }
 
