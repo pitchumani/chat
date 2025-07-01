@@ -31,6 +31,7 @@ public:
 	// add client sockets to listen list, return max socket id
 	int addSocketsToListen(fd_set *fds);
 	int readMessage(fd_set *fds, std::string &msg);
+	bool broadcastMessage(int sender, const std::string &msg);
 	void close(int sock);
 	void closeSockets();
 };
